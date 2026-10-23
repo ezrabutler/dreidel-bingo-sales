@@ -1,117 +1,170 @@
-import { createWriteStream, mkdirSync } from 'node:fs'
+import fs from 'node:fs'
 import path from 'node:path'
+import { put } from '@vercel/blob'
 import PDFDocument from 'pdfkit'
 
 const COLOR_MAP: Record<string, string> = {
   '1': '#facc15',
-  '2': '#60a5fa',
-  '3': '#f87171',
-  '4': '#4ade80',
-  '5': '#c084fc',
+  '2': '#1d4ed8',
+  '3': '#ef4444',
+  '4': '#22c55e',
+  '5': '#a855f7',
   '6': '#f59e0b'
 }
 
-export function generateUniqueSheetString(seed: number) {
-  const digits: string[] = []
-  for (let i = 0; i < 128; i++) {
-    digits.push(String(((seed * 31 + i * 17) % 6) + 1))
+const LABELS = ['shin', 'hey', 'gimmel', 'nūn']
+
+function normalizeDigits(value: string, fallback: string[] = []) {
+  const digits = (value || '').replace(/\s+/g, '').split('').filter((entry) => /\d/.test(entry))
+  if (digits.length >= 128) {
+    return digits.slice(0, 128).join('')
   }
-  return digits.join('')
+
+  if (fallback.length) {
+    return fallback.slice(0, 128).join('')
+  }
+
+  return Array.from({ length: 128 }, (_, index) => String((index % 6) + 1)).join('')
 }
 
-function drawRing(doc: PDFKit.PDFDocument, x: number, y: number, radius: number, color: string) {
-  doc.save()
-  doc.fillColor(color)
-  doc.circle(x, y, radius)
-  doc.fill()
-  doc.restore()
-}
-
-function drawCard(
-  doc: PDFKit.PDFDocument,
-  digits: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
+function drawBoard(doc: PDFKit.PDFDocument, digits: string, x: number, y: number, boardWidth: number, boardHeight: number) {
   doc.save()
   doc.fillColor('#ffffff')
-  doc.rect(x, y, width, height).fill()
-  doc.strokeColor('#cbd5e1')
+  doc.rect(x, y, boardWidth, boardHeight).fill()
   doc.lineWidth(1)
-  doc.rect(x, y, width, height).stroke()
+  doc.strokeColor('#d4d4d4')
+  doc.rect(x, y, boardWidth, boardHeight).stroke()
 
-  const labels = ['shin', 'hey', 'gimmel', 'nūn']
-  labels.forEach((label, index) => {
-    const labelX = x + 22 + index * (width / 5)
-    doc.fillColor('#0f172a')
-    doc.fontSize(8).text(label, labelX, y + 10, { width: 30, align: 'center' })
+  const labelArea = 30
+  const labelGap = (boardWidth - 28) / LABELS.length
+  LABELS.forEach((label, idx) => {
+    const labelX = x + 14 + idx * labelGap
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#000000').text(label, labelX, y + 10, {
+      width: 28,
+      align: 'center'
+    })
   })
 
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 4; col++) {
-      const index = col * 4 + row
-      const digit = digits[index]
-      const centerX = x + 22 + row * (width / 5)
-      const centerY = y + 46 + col * (height / 5)
-      drawRing(doc, centerX, centerY, 7, COLOR_MAP[digit] || '#e2e8f0')
+  const firstCellX = x + 16
+  const firstCellY = y + labelArea + 12
+  const cellWidth = (boardWidth - 32) / 4
+  const cellHeight = (boardHeight - labelArea - 28) / 4
+
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      const digit = digits[col * 4 + row] || '1'
+      const cx = firstCellX + row * cellWidth + cellWidth / 2
+      const cy = firstCellY + col * cellHeight + cellHeight / 2
+      const color = COLOR_MAP[digit] || '#facc15'
+      doc.fillColor(color).circle(cx, cy, Math.min(cellWidth, cellHeight) * 0.28).fill()
     }
   }
 
   doc.restore()
 }
 
-export async function generateOrderPdf({ orderId, sheets, variant, customerName }: any) {
-  const dir = path.join(process.cwd(), 'server', 'storage', 'pdfs')
-  mkdirSync(dir, { recursive: true })
-  const filePath = path.join(dir, `${orderId}.pdf`)
+async function uploadPdfToBlob(filePath: string, orderId: string) {
+  const token = process.env.BLOB_READ_WRITE_TOKEN
+  if (!token) {
+    return null
+  }
 
-  const doc = new PDFDocument({ size: 'LETTER', margin: 24, layout: 'landscape' })
-  const stream = doc.pipe(createWriteStream(filePath))
+  const buffer = fs.readFileSync(filePath)
+  const file = new File([buffer], `${orderId}.pdf`, { type: 'application/pdf' })
+  const result = await put(`${orderId}.pdf`, file, {
+    access: 'public',
+    addRandomSuffix: false
+  })
+
+  return result.url
+}
+
+export async function generateOrderPdf({
+  orderId,
+  sheets,
+  variant,
+  customerName,
+  paperSize = 'letter',
+  seedStrings = []
+}: {
+  orderId: string
+  sheets: number
+  variant: string
+  customerName: string
+  paperSize?: 'letter' | 'a4'
+  seedStrings?: string[]
+}) {
+  const tempDir = path.join(process.cwd(), 'server', 'storage', 'tmp')
+  fs.mkdirSync(tempDir, { recursive: true })
+
+  const filePath = path.join(tempDir, `${orderId}.pdf`)
+  const pageSize = paperSize === 'a4' ? 'A4' : 'LETTER'
+  const doc = new PDFDocument({ size: pageSize, margin: 22, layout: 'landscape' })
+  const stream = fs.createWriteStream(filePath)
+  doc.pipe(stream)
 
   const pageWidth = doc.page.width
   const pageHeight = doc.page.height
-  const margin = 32
-  const gap = 12
+  const outerMargin = 26
+  const gapX = 16
+  const gapY = 18
   const cardsPerRow = 4
-  const cardWidth = (pageWidth - (margin * 2) - (gap * (cardsPerRow - 1))) / cardsPerRow
-  const cardHeight = 182
+  const rowsPerPage = 2
+  const usableWidth = pageWidth - outerMargin * 2
+  const cardWidth = (usableWidth - gapX * (cardsPerRow - 1)) / cardsPerRow
+  const cardHeight = 190
 
-  doc.fillColor('#ffffff')
-  doc.rect(0, 0, pageWidth, pageHeight).fill()
-  doc.fillColor('#0f172a')
-  doc.fontSize(18).text(`${customerName || 'Dreidel Bingo'} · ${variant} · ${sheets} sheet${sheets > 1 ? 's' : ''}`, 40, 22)
+  const actualSeedStrings = seedStrings.length
+    ? seedStrings
+    : Array.from({ length: Math.max(sheets, 1) }, (_, index) => normalizeDigits(String(index + 1)))
 
   for (let sheetIndex = 0; sheetIndex < Number(sheets); sheetIndex++) {
-    const digits = generateUniqueSheetString(sheetIndex + 1)
-    const sheetPositions = [
-      [0, 1, 2, 3],
-      [4, 5, 6, 7],
-    ]
+    const seedString = normalizeDigits(
+      actualSeedStrings[sheetIndex] || '',
+      Array.from({ length: 128 }, (_, idx) => String((idx % 6) + 1))
+    )
 
-    sheetPositions.forEach((row, rowIndex) => {
-      row.forEach((cardNumber) => {
-        const x = margin + (cardNumber % cardsPerRow) * (cardWidth + gap)
-        const y = 52 + rowIndex * (cardHeight + 18)
-        drawCard(doc, digits.slice(cardNumber * 16, (cardNumber + 1) * 16), x, y, cardWidth, cardHeight)
-      })
+    if (sheetIndex > 0) {
+      doc.addPage({ size: pageSize, margin: 22, layout: 'landscape' })
+    }
+
+    doc.fillColor('#ffffff').rect(0, 0, pageWidth, pageHeight).fill()
+    doc.fillColor('#000000').font('Helvetica-Bold').fontSize(27).text('CJC HANUKKAH PARTY', 40, 18, {
+      align: 'center',
+      width: pageWidth - 80
     })
 
-    if (sheetIndex < Number(sheets) - 1) {
-      doc.addPage({ size: 'LETTER', margin: 24, layout: 'landscape' })
-      doc.fillColor('#ffffff')
-      doc.rect(0, 0, doc.page.width, doc.page.height).fill()
-      doc.fillColor('#0f172a')
+    for (let cardIndex = 0; cardIndex < 8; cardIndex++) {
+      const row = Math.floor(cardIndex / cardsPerRow)
+      const col = cardIndex % cardsPerRow
+      const x = outerMargin + col * (cardWidth + gapX)
+      const y = 68 + row * (cardHeight + gapY)
+      const digits = seedString.slice(cardIndex * 16, cardIndex * 16 + 16)
+      drawBoard(doc, digits, x, y, cardWidth, cardHeight)
     }
+
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000').text(
+      `${customerName || 'Dreidel Bingo'} | ${variant} | ${sheetIndex + 1}/${sheets}`,
+      40,
+      pageHeight - 26,
+      {
+        align: 'center',
+        width: pageWidth - 80
+      }
+    )
   }
 
   doc.end()
 
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     stream.on('finish', resolve)
     stream.on('error', reject)
   })
 
-  return filePath
+  const blobUrl = await uploadPdfToBlob(filePath, orderId)
+  return {
+    filePath,
+    blobUrl,
+    fileName: `${orderId}.pdf`
+  }
 }
