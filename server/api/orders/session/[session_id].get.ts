@@ -1,12 +1,12 @@
 import { createError, defineEventHandler, getRouterParam } from 'h3'
-import { getOrderById } from '../../utils/order-store'
+import { getOrderBySessionId } from '../../../utils/order-store'
 
 export default defineEventHandler(async (event) => {
-  const orderId = getRouterParam(event, 'id')
-  const order = orderId ? await getOrderById(orderId) : null
+  const sessionId = getRouterParam(event, 'session_id')
+  const order = sessionId ? await getOrderBySessionId(sessionId) : null
 
   if (!order) {
-    throw createError({ status: 404, statusMessage: 'Order not found.' })
+    throw createError({ status: 404, statusMessage: 'Order not found for this session.' })
   }
 
   return order
