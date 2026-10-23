@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+input,
+select,
+button {
+  @apply transition-all duration-200;
+}
+
+.card-sheen {
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.35);
+}
+
+.dreidel-gradient {
+  background: radial-gradient(circle at top, rgba(251, 191, 36, 0.18), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.2), transparent 30%),
+    linear-gradient(135deg, #020617 0%, #0f172a 100%);
+}

@@ -1,0 +1,21 @@
+{
+  "name": "dreidel-bingo-sales",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.0",
+    "nodemailer": "^6.9.16",
+    "nuxt": "^3.14.159",
+    "pdfkit": "^0.15.1",
+    "stripe": "^17.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1"
+  }
+}
