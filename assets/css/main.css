@@ -1,20 +1,28 @@
-import fs from 'node:fs'
-import { createError, defineEventHandler, getRouterParam, sendStream } from 'h3'
-import { getOrderById } from '../../utils/order-store'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export default defineEventHandler(async (event) => {
-  const orderId = getRouterParam(event, 'orderId')
-  const order = orderId ? getOrderById(orderId) : null
+:root {
+  color-scheme: light;
+}
 
-  if (!order) {
-    throw createError({ status: 404, statusMessage: 'Order not found.' })
-  }
+html {
+  scroll-behavior: smooth;
+}
 
-  if (!order.pdfFilePath || !fs.existsSync(order.pdfFilePath)) {
-    throw createError({ status: 404, statusMessage: 'PDF not found on disk.' })
-  }
+* {
+  box-sizing: border-box;
+}
 
-  event.node.res.setHeader('Content-Type', 'application/pdf')
-  event.node.res.setHeader('Content-Disposition', `attachment; filename="${order.fileName || 'dreidel-bingo.pdf'}"`)
-  return sendStream(event, fs.createReadStream(order.pdfFilePath))
-})
+body {
+  @apply bg-[#f2f2f0] text-slate-900 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
