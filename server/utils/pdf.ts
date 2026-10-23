@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createWriteStream, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import PDFDocument from 'pdfkit'
 
@@ -27,25 +27,34 @@ function drawRing(doc: PDFKit.PDFDocument, x: number, y: number, radius: number,
   doc.restore()
 }
 
-function drawCard(doc: PDFKit.PDFDocument, digits: string, x: number, y: number) {
+function drawCard(
+  doc: PDFKit.PDFDocument,
+  digits: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
   doc.save()
+  doc.fillColor('#ffffff')
+  doc.rect(x, y, width, height).fill()
   doc.strokeColor('#cbd5e1')
   doc.lineWidth(1)
-  doc.rect(x, y, 190, 180).stroke()
+  doc.rect(x, y, width, height).stroke()
 
   const labels = ['shin', 'hey', 'gimmel', 'nūn']
   labels.forEach((label, index) => {
-    const labelX = x + 22 + index * 44
+    const labelX = x + 22 + index * (width / 5)
     doc.fillColor('#0f172a')
-    doc.fontSize(8).text(label, labelX, y + 10, { width: 35, align: 'center' })
+    doc.fontSize(8).text(label, labelX, y + 10, { width: 30, align: 'center' })
   })
 
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
-      const index = row * 4 + col
+      const index = col * 4 + row
       const digit = digits[index]
-      const centerX = x + 22 + col * 42
-      const centerY = y + 46 + row * 38
+      const centerX = x + 22 + row * (width / 5)
+      const centerY = y + 46 + col * (height / 5)
       drawRing(doc, centerX, centerY, 7, COLOR_MAP[digit] || '#e2e8f0')
     }
   }
@@ -61,24 +70,31 @@ export async function generateOrderPdf({ orderId, sheets, variant, customerName 
   const doc = new PDFDocument({ size: 'LETTER', margin: 24, layout: 'landscape' })
   const stream = doc.pipe(createWriteStream(filePath))
 
-  doc.fillColor('#ffffff')
-  doc.rect(0, 0, doc.page.width, doc.page.height).fill()
-  doc.fillColor('#0f172a')
+  const pageWidth = doc.page.width
+  const pageHeight = doc.page.height
+  const margin = 32
+  const gap = 12
+  const cardsPerRow = 4
+  const cardWidth = (pageWidth - (margin * 2) - (gap * (cardsPerRow - 1))) / cardsPerRow
+  const cardHeight = 182
 
+  doc.fillColor('#ffffff')
+  doc.rect(0, 0, pageWidth, pageHeight).fill()
+  doc.fillColor('#0f172a')
   doc.fontSize(18).text(`${customerName || 'Dreidel Bingo'} · ${variant} · ${sheets} sheet${sheets > 1 ? 's' : ''}`, 40, 22)
 
   for (let sheetIndex = 0; sheetIndex < Number(sheets); sheetIndex++) {
     const digits = generateUniqueSheetString(sheetIndex + 1)
-    const cardLayout = [
+    const sheetPositions = [
       [0, 1, 2, 3],
-      [4, 5, 6, 7]
+      [4, 5, 6, 7],
     ]
 
-    cardLayout.forEach((row, rowIndex) => {
+    sheetPositions.forEach((row, rowIndex) => {
       row.forEach((cardNumber) => {
-        const x = 42 + (cardNumber % 4) * 200
-        const y = 52 + rowIndex * 190
-        drawCard(doc, digits.slice(cardNumber * 16, (cardNumber + 1) * 16), x, y)
+        const x = margin + (cardNumber % cardsPerRow) * (cardWidth + gap)
+        const y = 52 + rowIndex * (cardHeight + 18)
+        drawCard(doc, digits.slice(cardNumber * 16, (cardNumber + 1) * 16), x, y, cardWidth, cardHeight)
       })
     })
 
