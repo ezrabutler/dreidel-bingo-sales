@@ -1,49 +1,13 @@
-import fs from 'node:fs'
-import path from 'node:path'
-
-const storageRoot = path.join(process.cwd(), 'server', 'storage')
-const ordersFile = path.join(storageRoot, 'orders.json')
-const pdfDirectory = path.join(storageRoot, 'pdfs')
-
-export function ensureOrderStorage() {
-  fs.mkdirSync(pdfDirectory, { recursive: true })
-  if (!fs.existsSync(ordersFile)) {
-    fs.writeFileSync(ordersFile, JSON.stringify([], null, 2))
-  }
-}
-
-export function loadOrders() {
-  ensureOrderStorage()
-  return JSON.parse(fs.readFileSync(ordersFile, 'utf8')) as any[]
-}
-
-export function saveOrder(order: any) {
-  const orders = loadOrders()
-  const exists = orders.some((entry) => entry.id === order.id)
-  if (!exists) {
-    orders.push(order)
-  } else {
-    for (let i = 0; i < orders.length; i++) {
-      if (orders[i].id === order.id) {
-        orders[i] = order
-      }
-    }
-  }
-  fs.writeFileSync(ordersFile, JSON.stringify(orders, null, 2))
-  return order
-}
-
-export function getOrderById(orderId: string) {
-  return loadOrders().find((entry) => entry.id === orderId) || null
-}
-
-export function getOrderBySessionId(sessionId: string) {
-  return loadOrders().find((entry) => entry.stripeSessionId === sessionId || entry.sessionId === sessionId) || null
-}
-
-export function getStoragePathsForOrder(orderId: string) {
-  return {
-    pdfFilePath: path.join(pdfDirectory, `${orderId}.pdf`),
-    jsonFilePath: ordersFile
-  }
-}
+<template>
+  <main class="min-h-screen bg-[#f2f2f0] px-6 py-16 text-slate-900">
+    <div class="mx-auto max-w-xl rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
+      <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-4xl text-amber-700">!</div>
+      <p class="text-xs font-bold uppercase tracking-[0.35em] text-amber-700">Payment canceled</p>
+      <h1 class="mt-4 text-4xl font-black">Checkout was canceled.</h1>
+      <p class="mt-4 text-slate-600">No charge was made and no seed strings were consumed.</p>
+      <NuxtLink to="/" class="mt-8 inline-block rounded-2xl bg-amber-400 px-6 py-4 font-black text-slate-950 transition hover:bg-amber-300">
+        Return to the storefront
+      </NuxtLink>
+    </div>
+  </main>
+</template>
