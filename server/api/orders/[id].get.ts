@@ -32,15 +32,15 @@ export default defineEventHandler(async (event) => {
   if (payload.type === 'checkout.session.completed') {
     const session = payload.data.object as any
     const orderId = session.metadata?.orderId || session.id
-    const order = getOrderById(orderId)
+    const order = await getOrderById(orderId)
     const sheets = Number(order?.sheets || session.metadata?.sheets || 1)
     const variant = order?.variant || session.metadata?.variant || '5-color'
     const name = order?.customerName || session.metadata?.name || 'Dreidel Player'
     const email = order?.email || session.metadata?.email || 'customer@example.com'
     const paperSize = order?.paperSize || session.metadata?.paperSize || 'letter'
-    const reservedSeedStrings = order?.reservedSeedStrings?.length ? order.reservedSeedStrings : finalizeSeedStrings(orderId)
+    const reservedSeedStrings = order?.reservedSeedStrings && order.reservedSeedStrings.length ? order.reservedSeedStrings : await finalizeSeedStrings(orderId)
 
-    const pdfFilePath = await generateOrderPdf({
+    const pdfResult = await generateOrderPdf({
       orderId,
       sheets,
       variant,
@@ -67,20 +67,21 @@ export default defineEventHandler(async (event) => {
       }),
       status: 'fulfilled',
       stripeSessionId: session.id,
-      pdfFilePath,
-      fileName: `dreidel-bingo-${sheets}-sheets-${variant}.pdf`,
-      downloadUrl: `${process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/download/${orderId}`
+      pdfFilePath: pdfResult.filePath,
+      pdfUrl: pdfResult.blobUrl,
+      fileName: pdfResult.fileName,
+      downloadUrl: pdfResult.blobUrl || `${process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/download/${orderId}`
     }
 
-    saveOrder(finalOrder)
-    finalizeSeedStrings(orderId)
+    await saveOrder(finalOrder)
+    await finalizeSeedStrings(orderId)
     await sendOrderEmail(finalOrder)
   }
 
   if (payload.type === 'checkout.session.expired' || payload.type === 'checkout.session.async_payment_failed') {
     const session = payload.data.object as any
     const orderId = session.metadata?.orderId || session.id
-    releaseReservedSeedStrings(orderId)
+    await releaseReservedSeedStrings(orderId)
   }
 
   return { received: true }

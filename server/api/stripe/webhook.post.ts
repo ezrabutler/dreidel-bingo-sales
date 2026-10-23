@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
 
   let reservedSeedStrings: string[] = []
   try {
-    reservedSeedStrings = reserveSeedStrings(sheets, orderId)
+    reservedSeedStrings = await reserveSeedStrings(sheets, orderId)
   } catch (error) {
     throw createError({
       status: 400,
@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
     stripeSessionId: ''
   }
 
-  saveOrder(order)
+  await saveOrder(order)
 
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY
   if (stripeSecretKey) {
@@ -87,7 +87,7 @@ export default defineEventHandler(async (event) => {
     })
 
     order.stripeSessionId = session.id
-    saveOrder(order)
+    await saveOrder(order)
 
     return {
       url: session.url,
@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const pdfFilePath = await generateOrderPdf({
+  const pdfResult = await generateOrderPdf({
     orderId,
     sheets,
     variant,
@@ -108,13 +108,14 @@ export default defineEventHandler(async (event) => {
   const fulfilledOrder = {
     ...order,
     status: 'fulfilled',
-    pdfFilePath,
-    fileName: `dreidel-bingo-${sheets}-sheets-${variant}.pdf`,
-    downloadUrl: `${baseUrl}/api/download/${orderId}`
+    pdfFilePath: pdfResult.filePath,
+    pdfUrl: pdfResult.blobUrl,
+    fileName: pdfResult.fileName,
+    downloadUrl: pdfResult.blobUrl || `${baseUrl}/api/download/${orderId}`
   }
 
-  finalizeSeedStrings(orderId)
-  saveOrder(fulfilledOrder)
+  await finalizeSeedStrings(orderId)
+  await saveOrder(fulfilledOrder)
   await sendOrderEmail(fulfilledOrder)
 
   return {

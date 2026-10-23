@@ -9,6 +9,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ status: 400, statusMessage: 'Please provide at least one 128-digit string.' })
   }
 
-  const result = uploadSeedStrings(lines)
-  return result
+  return await uploadSeedStrings(lines)
 })
