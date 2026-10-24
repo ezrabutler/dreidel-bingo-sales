@@ -4,11 +4,11 @@ import { put } from '@vercel/blob'
 import { chromium } from 'playwright'
 
 const COLOR_MAP: Record<string, string> = {
-  '1': '#facc15',
-  '2': '#60a5fa',
-  '3': '#f87171',
-  '4': '#4ade80',
-  '5': '#c084fc',
+  '1': '#ef4444',
+  '2': '#facc15',
+  '3': '#22c55e',
+  '4': '#3b82f6',
+  '5': '#a78bfa',
   '6': '#f59e0b',
   default: '#e5e7eb'
 }
@@ -33,66 +33,66 @@ export function generateUniqueSheetString(seed: number) {
   return digits.join('')
 }
 
-function buildBoardSvg(boardDigits: string, x: number, y: number, boardNumber: number) {
-  const cells: string[] = []
+function normalizeSeedString(seed: string) {
+  const digits = (seed || '').replace(/\D/g, '').slice(0, 128)
+  return digits.padEnd(128, '1')
+}
 
-  for (let col = 0; col < 4; col++) {
-    for (let row = 0; row < 4; row++) {
-      const index = col * 4 + row
-      const value = boardDigits[index] || '0'
-      const fill = COLOR_MAP[value] || COLOR_MAP.default
-      const centerX = x + 80 + row * 125
-      const centerY = y + 130 + col * 125
-      cells.push(
-        `<circle cx="${centerX}" cy="${centerY}" r="42" fill="${fill}" />`
-      )
-    }
-  }
+function getBoardRows(seed: string, boardIndex: number) {
+  const boardDigits = normalizeSeedString(seed).slice(boardIndex * 16, boardIndex * 16 + 16)
+
+  return Array.from({ length: 4 }, (_, rowIndex) => {
+    return boardDigits.slice(rowIndex * 4, rowIndex * 4 + 4)
+  })
+}
+
+function buildBoardHtml(seed: string, boardIndex: number) {
+  const rows = getBoardRows(seed, boardIndex)
+
+  const cells = rows
+    .map((row) => {
+      return row
+        .map((digit) => {
+          const fill = COLOR_MAP[digit] || COLOR_MAP.default
+          return `<div class="dot" style="background:${fill};"></div>`
+        })
+        .join('')
+    })
+    .join('')
 
   const labels = LABELS.map((label, index) => {
-    const labelX = x + 70 + index * 140
-    const glyphX = x + 72 + index * 140
     return `
-      <g>
-        <text x="${labelX}" y="${y + 60}" text-anchor="middle" font-family="Avenir Next, Arial, sans-serif" font-size="32" fill="#111827">${label}</text>
-        <text x="${glyphX}" y="${y + 110}" text-anchor="middle" font-family="Arial, sans-serif" font-size="72" fill="#111827">${HEBREW_LABELS[index]}</text>
-      </g>
+      <div class="label-col">
+        <div class="label">${label}</div>
+        <div class="glyph">${HEBREW_LABELS[index]}</div>
+      </div>
     `
   }).join('')
 
   return `
-    <g>
-      <rect x="${x}" y="${y}" width="${BOARD_WIDTH}" height="${BOARD_HEIGHT}" fill="#ffffff" stroke="#d1d5db" stroke-width="2" rx="0"/>
-      ${labels}
-      ${cells.join('')}
-      <text x="${x + 28}" y="${y + BOARD_HEIGHT + 44}" font-family="Avenir Next, Arial, sans-serif" font-size="30" fill="#111827">game #${boardNumber}</text>
-    </g>
+    <div class="board">
+      <div class="labels">${labels}</div>
+      <div class="grid">${cells}</div>
+      <div class="game-label">game #${boardIndex + 1}</div>
+    </div>
   `
 }
 
-function buildSheetSvg(sheetDigits: string) {
-  const boards = [] as string[]
-
-  for (let boardIndex = 0; boardIndex < 8; boardIndex++) {
-    const col = boardIndex % 4
-    const row = Math.floor(boardIndex / 4)
-    const x = START_X + col * (BOARD_WIDTH + GAP_X)
-    const y = START_Y + row * (BOARD_HEIGHT + GAP_Y)
-    const boardDigits = sheetDigits.slice(boardIndex * 16, boardIndex * 16 + 16)
-    boards.push(buildBoardSvg(boardDigits, x, y, boardIndex + 1))
-  }
+function buildPageHtml(seed: string) {
+  const boards = Array.from({ length: 8 }, (_, index) => buildBoardHtml(seed, index)).join('')
 
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" viewBox="0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}">
-      <rect x="0" y="0" width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" fill="#ffffff"/>
-      <text x="${PAGE_WIDTH / 2}" y="110" text-anchor="middle" font-family="Avenir Next, Arial, sans-serif" font-weight="800" font-size="120" fill="#111827">CJC HANUKKAH PARTY</text>
-      <text x="${PAGE_WIDTH / 2}" y="230" text-anchor="middle" font-family="Avenir Next, Arial, sans-serif" font-size="64" fill="#111827">HANUKKAH 2026 / 5787</text>
-      ${boards.join('')}
-    </svg>
+    <div class="page">
+      <div class="page-header">
+        <div class="title">CJC HANUKKAH PARTY</div>
+        <div class="subtitle">HANUKKAH 2026 / 5787</div>
+      </div>
+      <div class="board-grid">${boards}</div>
+    </div>
   `
 }
 
-async function renderSvgToPdf(filePath: string, svg: string) {
+async function renderHtmlToPdf(filePath: string, pagesHtml: string) {
   const browser = await chromium.launch({ headless: true })
 
   try {
@@ -101,7 +101,102 @@ async function renderSvgToPdf(filePath: string, svg: string) {
       deviceScaleFactor: 1
     })
 
-    await page.setContent(`<!doctype html><html><body style="margin:0;background:#fff;">${svg}</body></html>`, {
+    await page.setContent(`<!doctype html><html><head><style>
+      @page { size: 3300px 2550px; margin: 0; }
+      html, body {
+        margin: 0;
+        background: #ffffff;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        padding: 0;
+      }
+      .page {
+        width: ${PAGE_WIDTH}px;
+        height: ${PAGE_HEIGHT}px;
+        background: #ffffff;
+        box-sizing: border-box;
+        page-break-after: always;
+        page-break-inside: avoid;
+      }
+      .page:last-child {
+        page-break-after: auto;
+      }
+      .page-header {
+        text-align: center;
+        padding-top: 36px;
+        margin-bottom: 18px;
+      }
+      .title {
+        font-size: 78px;
+        font-weight: 900;
+        letter-spacing: 4px;
+        color: #111827;
+      }
+      .subtitle {
+        margin-top: 6px;
+        font-size: 34px;
+        letter-spacing: 2px;
+        color: #111827;
+      }
+      .board-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: ${GAP_Y}px ${GAP_X}px;
+        padding: 0 ${START_X}px;
+        justify-items: center;
+        align-items: start;
+      }
+      .board {
+        width: ${BOARD_WIDTH}px;
+        height: ${BOARD_HEIGHT}px;
+        border: 2px solid #d1d5db;
+        background: #ffffff;
+        padding: 18px 20px 12px;
+        box-sizing: border-box;
+      }
+      .labels {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .label-col {
+        text-align: center;
+      }
+      .label {
+        font-size: 18px;
+        font-weight: 600;
+        color: #111827;
+        text-transform: lowercase;
+      }
+      .glyph {
+        margin-top: 2px;
+        font-size: 44px;
+        line-height: 1;
+        font-weight: 700;
+        color: #111827;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 8px;
+      }
+      .dot {
+        width: 62px;
+        height: 62px;
+        border-radius: 9999px;
+        background: #e5e7eb;
+      }
+      .game-label {
+        margin-top: 16px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #111827;
+        text-align: left;
+      }
+    </style></head><body>${pagesHtml}</body></html>`, {
       waitUntil: 'load'
     })
 
@@ -139,22 +234,27 @@ export async function generateOrderPdf({
   orderId,
   sheets,
   variant,
-  customerName
+  customerName,
+  seedStrings,
+  paperSize
 }: {
   orderId: string
   sheets: number
   variant: string
   customerName: string
+  seedStrings?: string[]
+  paperSize?: string
 }) {
   const tempDir = path.join(process.cwd(), 'server', 'storage', 'tmp')
   fs.mkdirSync(tempDir, { recursive: true })
 
-  const sheetCount = Number(sheets) || 1
-  const filePath = path.join(tempDir, `${orderId}.pdf`)
+  const perPageSeedStrings = (seedStrings && seedStrings.length ? seedStrings : [generateUniqueSheetString(1)])
+    .slice(0, Math.max(1, Number(sheets) || 1))
 
-  const sheetDigits = generateUniqueSheetString(1)
-  const svg = buildSheetSvg(sheetDigits)
-  await renderSvgToPdf(filePath, svg)
+  const filePath = path.join(tempDir, `${orderId}.pdf`)
+  const pagesHtml = perPageSeedStrings.map(buildPageHtml).join('')
+
+  await renderHtmlToPdf(filePath, pagesHtml)
 
   const blobUrl = await uploadPdfToBlob(filePath, orderId)
 
@@ -162,6 +262,6 @@ export async function generateOrderPdf({
     filePath,
     blobUrl,
     fileName: `${orderId}.pdf`,
-    sheetCount
+    sheetCount: perPageSeedStrings.length
   }
 }
